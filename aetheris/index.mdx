@@ -1,0 +1,45 @@
+---
+title: "Aetheris Space Studio"
+description: "Visão do produto: simulador unificado de missão espacial que funde NASA GMAT, Ansys STK e Orbiter Space Flight Simulator em um único ambiente integrado de código aberto."
+---
+
+# Aetheris Space Studio
+
+> **Arquiteto de Software Aeroespacial / Engenheiro de Sistemas Espaciais Sênior**  
+> Especificação de arquitetura e protótipo funcional do MVP da plataforma de código aberto **Aetheris Space Studio**.
+
+## A fusão (GMAT × STK × Orbiter)
+
+As ferramentas clássicas forçam o engenheiro espacial a alternar entre ambientes desconectados: o planejador astrodinâmico (NASA GMAT) não voa a nave em tempo real; o visualizador multidomínio (Ansys STK) não propaga física de reentrada atmosférica; o simulador de voo (Orbiter) não faz otimização de trajetória nem orçamento de enlace rigoroso.
+
+**Aetheris elimina essas barreiras** com um único motor de física compartilhado por quatro módulos integrados, executando primeiro na web (navegador com aceleração de hardware) e com suporte a execução local de alta performance via WebAssembly.
+
+<Columns cols={3}>
+<Card title="Do NASA GMAT" icon="calculator">
+Rigor astrodinâmico: propagação com perturbadores J2–J6, arrasto atmosférico e pressão de radiação solar, transferências de Hohmann, assistências gravitacionais, janelas de lançamento, otimização de Δv e análise probabilística Monte Carlo.
+</Card>
+<Card title="Do Ansys STK" icon="satellite-dish">
+Visualização multidomínio dinâmica no tempo (globo com terminador dia/noite, terreno), cobertura de sensores, orçamento de enlace (link budget) com estações terrestres, janelas de acesso (Access) e análise de iluminação.
+</Card>
+<Card title="Do Orbiter" icon="rocket">
+Física newtoniana contínua em tempo real, aerodinâmica de subida e reentrada (Max Q, aquecimento térmico), acoplamento orbital (docking) e cabine de instrumentos com MFDs configuráveis (mapa orbital, alinhamento de plano, docking, GNC).
+</Card>
+</Columns>
+
+## Quatro módulos, um só motor de física
+
+1. **Módulo 1 — Construtor e Dimensionamento** (Engenharia de Sistemas): equação de Tsiolkovsky, estagiamento, razão empuxo-peso (TWR), orçamento de massa/potência, configuração de subsistemas (motores químicos/elétricos, tanques, painéis solares, antenas, sensores ópticos).
+2. **Módulo 2 — Planejador Astrodinâmico** (núcleo GMAT): propagação de alta precisão, solucionador de manobras e otimização de Δv, simulador Monte Carlo de dispersão de erros de lançamento/queima.
+3. **Módulo 3 — Análise Multidomínio e Comunicações** (núcleo STK): globo 3D em tempo real, janelas de acesso satélite × estação terrestre, taxa de dados e atenuação de sinal, FOV de sensores/câmeras na superfície.
+4. **Módulo 4 — Simulador de Voo e Operações em Tempo Real** (núcleo Orbiter): "assumir o controle" a qualquer instante da linha do tempo, física atmosférica completa (subida e reentrada), painel de telemetria interativo com MFDs configuráveis.
+
+## Requisitos não-funcionais e stack sugerida
+
+| Dimensão | Escolha |
+|---|---|
+| **Arquitetura** | Web-first (navegador, aceleração de hardware) + execução local de alta performance |
+| **Motor de física e cálculo** | WebAssembly (Rust ou C++) — cálculos astrodinâmicos pesados em tempo real sem travar a UI |
+| **Renderização 3D** | Three.js / WebGPU com precisão de ponto flutuante dupla (emulação de 64-bit) contra jitter em escalas interplanetárias |
+| **Automação** | Scripts Python ou Lua nativos para automação de missão e integração com IA |
+
+> Detalhes do diagrama de fluxo de dados, requisitos por módulo, stack tecnológica, estrutura de pastas e o protótipo funcional em C# estão nas páginas de **Arquitetura** e **Protótipo**.

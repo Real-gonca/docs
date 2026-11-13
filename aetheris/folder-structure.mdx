@@ -1,0 +1,52 @@
+---
+title: "Estrutura de Pastas"
+description: "Estrutura de pastas do repositório Aetheris Space Studio, incluindo o protótipo funcional em C#."
+---
+
+# Estrutura de Pastas
+
+## Repositório da plataforma (open source)
+
+```text
+aetheris-space-studio/                 # Repositório principal da plataforma
+├── docs/                              # Este site de documentação (Mintlify)
+│   └── aetheris/                      # Páginas deste projeto (index, architecture, modules, stack, prototype)
+├── crates/                            # Motor de física em Rust (alvo Wasm)
+│   ├── astrodynamics/                 # Propagação, J2–J6, arrasto atmosférico, pressão de radiação solar
+│   ├── propulsion/                    # Tsiolkovsky, estágios, TWR, orçamento de massa
+│   ├── flight-dynamics/               # Integração newtoniana, GNC, docking
+│   └── link-analysis/                 # Access, orçamento de enlace, FOV
+├── packages/
+│   ├── web/                           # Frontend: React + Three.js / WebGPU
+│   ├── link-analysis/                 # Análise de enlaces e cobertura
+│   └── scripting/                     # Pontes Python (Pyodide) e Lua
+├── prototype/                         # >>> MVP funcional em C# (esta documentação)
+│   ├── Aetheris.Prototype.csproj
+│   ├── src/
+│   │   ├── Core/                      # Vetores 64-bit, elementos keplerianos, propulsão, nave
+│   │   ├── Link/                      # Estação terrestre, janela de acesso, orçamento de enlace
+│   │   ├── Flight/                    # Motor de voo em tempo real, telemetria, MFDs
+│   │   └── Program.cs                 # Ponto de entrada do protótipo (menu interativo)
+│   └── README.md
+└── tests/                             # Testes de validação contra GMAT, STK e Orbiter (referência)
+```
+
+## O que cada pasta do protótipo C# contém
+
+| Pasta | Conteúdo |
+|---|---|
+| `src/Core` | `Vector3d` (dupla precisão), `Constants` da Terra, elementos keplerianos, propagador dois-corpo com solver de Kepler, perturbação J2, equação de Tsiolkovsky, TWR, modelo da nave e estágios. |
+| `src/Link` | `GroundStation` (geodésico ↔ ECEF, frame topocêntrico E/N/U), cálculo de janela de acesso por elevação, orçamento de enlace (Friis, potência recebida, SNR, taxa de dados estimada por Shannon). |
+| `src/Flight` | `FlightEngine` (integração gravitação + empuxo + consumo de propelente), `TelemetrySnapshot` (MFD de voo). |
+| `Program.cs` | Menu interativo: (1) dimensionamento de propulsão, (2) predição de órbita, (3) contato com estação terrestre, (4) modo voo tempo real com controle manual do empuxo. |
+
+## Como executar o protótipo
+
+Requer o [SDK do .NET 6 (ou superior)](https://dotnet.microsoft.com/download):
+
+```bash
+cd prototype
+dotnet run
+```
+
+O código-fonte completo está na página **Protótipo (C#)** e na pasta `prototype/src/` do repositório.

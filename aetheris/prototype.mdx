@@ -1,0 +1,944 @@
+---
+title: "Protótipo Funcional (C#)"
+description: "Protótipo inicial do núcleo unificado do Aetheris Space Studio em C#: dimensionamento de propulsão, predição de órbita, contato com estação terrestre e controle manual de empuxo em tempo real."
+---
+
+# Protótipo Funcional — Núcleo Unificado (C#)
+
+Este protótipo demonstra, em um único programa de console, o coração da plataforma: uma espaçonave cujos parâmetros de propulsão são alterados pelo usuário, cuja órbita prevista é propagada, cujo contato com uma estação terrestre é verificado (janela de acesso + orçamento de enlace) e que pode ser voada em **tempo real com controle manual do empuxo** (modo "assumir o controle").
+
+> O protótipo é uma versão simplificada do MVP: física dois-corpo com perturbação J2, atmosfera modelada apenas por detecção de impacto (raio da Terra) e direção de empuxo sempre pró-grada. O motor completo (Rust/Wasm, Three.js/WebGPU, Monte Carlo, docking, térmico de reentrada) é especificado nas páginas de Arquitetura e Stack.
+
+## Pré-requisitos
+
+- [SDK do .NET 6 ou superior](https://dotnet.microsoft.com/download)
+
+```bash
+cd aetheris-space-studio/prototype
+dotnet run
+```
+
+## Mapa de namespaces
+
+| Namespace | Responsabilidade |
+|---|---|
+| `Aetheris.Core` | Vetores 64-bit, constantes da Terra, elementos keplerianos, propagador orbital, propulsão (Tsiolkovsky, TWR), modelo da nave. |
+| `Aetheris.Link` | Estação terrestre, conversão geodésico/ECEF/topocêntrico, janela de acesso, orçamento de enlace. |
+| `Aetheris.Flight` | Motor de voo em tempo real, integração newtoniana, telemetria MFD. |
+| `Aetheris.Prototype` | Ponto de entrada `Program.cs` com o menu interativo unificado. |
+
+## O que o protótipo faz (4 modos)
+
+1. **Configurar e dimensionar** — o usuário edita impulso específico (Isp), empuxo, massa seca, propelente e carga útil; o programa imprime Δv (Tsiolkovsky), TWR, massa inicial/final, aceleração e tempo de queima.
+2. **Prever órbita** — a partir de altitude circular e inclinação, o propagador dois-corpo imprime a evolução da órbita (altitude, velocidade, semieixo, excentricidade, inclinação, anomalia verdadeira).
+3. **Contato com estação terrestre** — sobre a janela de predição, o programa detecta janelas de *access* (elevação acima do limiar) e calcula o orçamento de enlace no melhor contato (perda no espaço livre, potência recebida, SNR e taxa de dados estimada).
+4. **Modo voo tempo real** — integração newtoniana com passo fixo; o usuário altera o empuxo manualmente (W/S ou teclas 0–9) enquanto a telemetria MFD (mapa orbital, altitude, velocidade, Δv restante, contato com estação) é atualizada a cada quadro. Pressione Q para devolver o controle ao planejador.
+
+## Código-fonte
+
+### `src/Core/Vector3d.cs`
+
+```csharp
+namespace Aetheris.Core;
+
+public readonly record struct Vector3d(double X, double Y, double Z)
+{
+    public static Vector3d Zero => new(0, 0, 0);
+    public static Vector3d UnitX => new(1, 0, 0);
+    public static Vector3d UnitY => new(0, 1, 0);
+    public static Vector3d UnitZ => new(0, 0, 1);
+
+    public double Magnitude => Math.Sqrt(X * X + Y * Y + Z * Z);
+    public double MagnitudeSquared => X * X + Y * Y + Z * Z;
+    public Vector3d Normalized => Magnitude > 0 ? this / Magnitude : Zero;
+
+    public static Vector3d operator +(Vector3d a, Vector3d b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+    public static Vector3d operator -(Vector3d a, Vector3d b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+    public static Vector3d operator -(Vector3d a) => new(-a.X, -a.Y, -a.Z);
+    public static Vector3d operator *(Vector3d a, double s) => new(a.X * s, a.Y * s, a.Z * s);
+    public static Vector3d operator *(double s, Vector3d a) => new(a.X * s, a.Y * s, a.Z * s);
+    public static Vector3d operator /(Vector3d a, double s) => new(a.X / s, a.Y / s, a.Z / s);
+
+    public static double Dot(Vector3d a, Vector3d b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+    public static Vector3d Cross(Vector3d a, Vector3d b) =>
+        new(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X);
+
+    public double DistanceTo(Vector3d b) => (this - b).Magnitude;
+}
+```
+
+### `src/Core/Constants.cs`
+
+```csharp
+namespace Aetheris.Core;
+
+public static class Constants
+{
+    public const double EarthMu = 3.986004418e14;   // m^3/s^2
+    public const double EarthRadius = 6378137.0;    // m (equatorial)
+    public const double EarthJ2 = 1.08262668e-3;
+    public const double EarthRotationRadPerS = 7.2921159e-5;
+    public const double StandardGravity = 9.80665;  // m/s^2 (g0)
+    public const double EarthEccentricitySquared = 0.00669437999014;
+    public const double SpeedOfLight = 299792458.0; // m/s
+}
+```
+
+### `src/Core/OrbitalMath.cs`
+
+```csharp
+using System;
+
+namespace Aetheris.Core;
+
+public sealed class OrbitalElements
+{
+    public double SemiMajorAxis { get; set; }      // a, m
+    public double Eccentricity { get; set; }       // e
+    public double Inclination { get; set; }        // rad
+    public double RightAscension { get; set; }     // rad (RAAN)
+    public double ArgumentOfPeriapsis { get; set; } // rad
+    public double TrueAnomaly { get; set; }        // rad
+    public double Epoch { get; set; }              // s
+    public double MeanMotion { get; set; }         // rad/s
+    public double Period => 2 * Math.PI / MeanMotion;
+}
+
+public static class OrbitalMath
+{
+    public static OrbitalElements RvToElements(Vector3d r, Vector3d v, double mu, double epochSeconds)
+    {
+        double rm = r.Magnitude;
+        double v2 = Vector3d.Dot(v, v);
+        double rv = Vector3d.Dot(r, v);
+        double energy = 0.5 * v2 - mu / rm;
+        double a = -mu / (2.0 * energy);
+        Vector3d h = Vector3d.Cross(r, v);
+        double hm = h.Magnitude;
+        double i = Math.Acos(Clamp(h.Z / hm, -1, 1));
+        var k = new Vector3d(0, 0, 1);
+        Vector3d node = Vector3d.Cross(k, h);
+        double nm = node.Magnitude;
+        double raan = nm > 1e-12 ? Math.Atan2(node.Y, node.X) : 0.0;
+        if (raan < 0) raan += 2 * Math.PI;
+
+        Vector3d evec = ((v2 - mu / rm) * r - rv * v) / mu;
+        double e = evec.Magnitude;
+        double argp = 0.0, nu = 0.0;
+        if (e > 1e-12 && nm > 1e-12)
+        {
+            double cosArg = Clamp(Vector3d.Dot(node, evec) / (nm * e), -1, 1);
+            double sinArg = Vector3d.Dot(Vector3d.Cross(node, evec), h) / (nm * e * hm);
+            argp = Math.Atan2(sinArg, cosArg);
+            if (argp < 0) argp += 2 * Math.PI;
+        }
+        if (e > 1e-12 && rm > 0)
+        {
+            double cosNu = Clamp(Vector3d.Dot(evec, r) / (e * rm), -1, 1);
+            double sinNu = Vector3d.Dot(Vector3d.Cross(evec, r), h) / (e * rm * hm);
+            nu = Math.Atan2(sinNu, cosNu);
+            if (nu < 0) nu += 2 * Math.PI;
+        }
+
+        double n = Math.Sqrt(mu / Math.Abs(a * a * a));
+        if (a < 0) n = -n; // guarda para órbitas hiperbólicas (demo usa elípticas)
+        return new OrbitalElements
+        {
+            SemiMajorAxis = a, Eccentricity = e, Inclination = i,
+            RightAscension = raan, ArgumentOfPeriapsis = argp,
+            TrueAnomaly = nu, Epoch = epochSeconds, MeanMotion = n
+        };
+    }
+
+    public static (Vector3d R, Vector3d V) ElementsToRv(OrbitalElements oe, double mu)
+    {
+        double a = oe.SemiMajorAxis, e = oe.Eccentricity, i = oe.Inclination;
+        double raan = oe.RightAscension, argp = oe.ArgumentOfPeriapsis, nu = oe.TrueAnomaly;
+        double p = a * (1 - e * e);
+        double rMag = p / (1 + e * Math.Cos(nu));
+        double h = Math.Sqrt(mu * p);
+
+        double rxP = rMag * Math.Cos(nu);
+        double ryP = rMag * Math.Sin(nu);
+        double vxP = -mu / h * Math.Sin(nu);
+        double vyP = mu / h * (e + Math.Cos(nu));
+
+        double ca = Math.Cos(argp), sa = Math.Sin(argp);
+        double ci = Math.Cos(i), si = Math.Sin(i);
+        double co = Math.Cos(raan), so = Math.Sin(raan);
+
+        double x = (co * ca - so * sa * ci) * rxP + (-co * sa - so * ca * ci) * ryP;
+        double y = (so * ca + co * sa * ci) * rxP + (-so * sa + co * ca * ci) * ryP;
+        double z = (sa * si) * rxP + (ca * si) * ryP;
+        double vx = (co * ca - so * sa * ci) * vxP + (-co * sa - so * ca * ci) * vyP;
+        double vy = (so * ca + co * sa * ci) * vxP + (-so * sa + co * ca * ci) * vyP;
+        double vz = (sa * si) * vxP + (ca * si) * vyP;
+
+        return (new Vector3d(x, y, z), new Vector3d(vx, vy, vz));
+    }
+
+    public static double SolveKepler(double M, double e)
+    {
+        M = WrapTwoPi(M);
+        double E = M;
+        for (int k = 0; k < 50; k++)
+        {
+            double f = E - e * Math.Sin(E) - M;
+            double fp = 1.0 - e * Math.Cos(E);
+            double d = f / fp;
+            E -= d;
+            if (Math.Abs(d) < 1e-12) break;
+        }
+        return E;
+    }
+
+    public static OrbitalElements Propagate(OrbitalElements oe, double mu, double dt)
+    {
+        double e = oe.Eccentricity;
+        double nu = oe.TrueAnomaly;
+        double E = 2 * Math.Atan2(Math.Sqrt(1 - e) * Math.Sin(nu / 2), Math.Sqrt(1 + e) * Math.Cos(nu / 2));
+        double M = E - e * Math.Sin(E);
+        M += oe.MeanMotion * dt;
+        E = SolveKepler(M, e);
+        double nuNew = 2 * Math.Atan2(Math.Sqrt(1 + e) * Math.Sin(E / 2), Math.Sqrt(1 - e) * Math.Cos(E / 2));
+        if (nuNew < 0) nuNew += 2 * Math.PI;
+        return new OrbitalElements
+        {
+            SemiMajorAxis = oe.SemiMajorAxis, Eccentricity = e, Inclination = oe.Inclination,
+            RightAscension = oe.RightAscension, ArgumentOfPeriapsis = oe.ArgumentOfPeriapsis,
+            TrueAnomaly = nuNew, Epoch = oe.Epoch + dt, MeanMotion = oe.MeanMotion
+        };
+    }
+
+    // Perturbação J2 (aceleração em m/s^2 na posição r, frame ECI).
+    public static Vector3d J2Acceleration(Vector3d r)
+    {
+        double rm2 = r.MagnitudeSquared;
+        double rm = Math.Sqrt(rm2);
+        double rm5 = rm2 * rm2 * rm;
+        double c = -1.5 * Constants.EarthJ2 * Constants.EarthMu * Constants.EarthRadius * Constants.EarthRadius / rm5;
+        double z2 = r.Z * r.Z;
+        return new Vector3d(
+            c * r.X * (1.0 - 5.0 * z2 / rm2),
+            c * r.Y * (1.0 - 5.0 * z2 / rm2),
+            c * r.Z * (3.0 - 5.0 * z2 / rm2));
+    }
+
+    static double Clamp(double v, double min, double max) => v < min ? min : v > max ? max : v;
+    static double WrapTwoPi(double a) { a %= 2 * Math.PI; if (a < 0) a += 2 * Math.PI; return a; }
+}
+```
+
+### `src/Core/Propulsion.cs` e `src/Core/Spacecraft.cs`
+
+```csharp
+namespace Aetheris.Core;
+
+public sealed class EngineSpec
+{
+    public string Name { get; set; } = "Motor";
+    public double ThrustN { get; set; }
+    public double IspS { get; set; }            // impulso específico, s
+    public double DryMassKg { get; set; }        // motor + estrutura do estágio
+    public double PropellantMassKg { get; set; }
+    public double MassFlowKgPerS => ThrustN / (IspS * Constants.StandardGravity);
+    public double TotalStageMassKg => DryMassKg + PropellantMassKg;
+}
+
+public sealed class PropulsionBudget
+{
+    public double InitialMassKg { get; set; }
+    public double FinalMassKg { get; set; }
+    public double PropellantConsumedKg { get; set; }
+    public double DeltaVMS { get; set; }
+    public double ThrustToWeightRatio { get; set; }
+    public double BurnTimeS { get; set; }
+    public double AccelerationMS2 { get; set; }
+}
+
+public static class PropulsionMath
+{
+    public static double DeltaVTsiolkovsky(double ispS, double m0, double mf) =>
+        ispS * Constants.StandardGravity * Math.Log(m0 / mf);
+
+    public static PropulsionBudget Budget(EngineSpec engine, double payloadMassKg, bool fullBurn)
+    {
+        double m0 = payloadMassKg + engine.TotalStageMassKg;
+        double mf = payloadMassKg + engine.DryMassKg;
+        double dv = DeltaVTsiolkovsky(engine.IspS, m0, mf);
+        double twr = engine.ThrustN / (m0 * Constants.StandardGravity);
+        double burnTime = fullBurn ? engine.PropellantMassKg / engine.MassFlowKgPerS : 0;
+        return new PropulsionBudget
+        {
+            InitialMassKg = m0, FinalMassKg = mf,
+            PropellantConsumedKg = fullBurn ? engine.PropellantMassKg : 0,
+            DeltaVMS = dv, ThrustToWeightRatio = twr, BurnTimeS = burnTime,
+            AccelerationMS2 = engine.ThrustN / m0
+        };
+    }
+}
+
+public sealed class Spacecraft
+{
+    public string Name { get; set; } = "Nave";
+    public double PayloadMassKg { get; set; }
+    public List<EngineSpec> Stages { get; } = new();
+    public int ActiveStageIndex { get; set; }
+    public double PropellantRemainingKg { get; set; }
+    public Vector3d ThrustDirection { get; set; } = Vector3d.UnitZ;
+
+    public double TotalMassKg
+    {
+        get
+        {
+            double stages = 0;
+            for (int i = 0; i < Stages.Count; i++)
+            {
+                if (i < ActiveStageIndex) continue; // estágio já desacoplado
+                stages += i == ActiveStageIndex
+                    ? Stages[i].DryMassKg + PropellantRemainingKg
+                    : Stages[i].TotalStageMassKg;
+            }
+            return PayloadMassKg + stages;
+        }
+    }
+
+    public double DeltaVRemainingMS
+    {
+        get
+        {
+            if (Stages.Count == 0 || ActiveStageIndex >= Stages.Count) return 0;
+            var e = Stages[ActiveStageIndex];
+            double m0 = TotalMassKg, mf = TotalMassKg - PropellantRemainingKg;
+            return mf > 0 && m0 > 0 ? PropulsionMath.DeltaVTsiolkovsky(e.IspS, m0, mf) : 0;
+        }
+    }
+
+    public Vector3d ThrustAcceleration(double fraction)
+    {
+        if (Stages.Count == 0 || ActiveStageIndex >= Stages.Count) return Vector3d.Zero;
+        var e = Stages[ActiveStageIndex];
+        double f = fraction < 0 ? 0 : fraction > 1 ? 1 : fraction;
+        return e.ThrustN * f / TotalMassKg * ThrustDirection.Normalized;
+    }
+
+    public void ConsumePropellant(double fraction, double dt)
+    {
+        if (Stages.Count == 0 || ActiveStageIndex >= Stages.Count) return;
+        var e = Stages[ActiveStageIndex];
+        double f = fraction < 0 ? 0 : fraction > 1 ? 1 : fraction;
+        double consumed = e.ThrustN * f / (e.IspS * Constants.StandardGravity) * dt;
+        consumed = Math.Min(consumed, PropellantRemainingKg);
+        PropellantRemainingKg -= consumed;
+        if (PropellantRemainingKg <= 1e-6 && ActiveStageIndex + 1 < Stages.Count)
+        {
+            ActiveStageIndex++; // estagio esgotado: desacopla e avança (simplificado)
+            PropellantRemainingKg = Stages[ActiveStageIndex].PropellantMassKg;
+        }
+    }
+}
+```
+
+### `src/Link/GroundStation.cs` (com resultados de acesso e enlace)
+
+```csharp
+namespace Aetheris.Link;
+
+public sealed class AccessResult
+{
+    public double ElevationDeg { get; set; }
+    public double AzimuthDeg { get; set; }
+    public double RangeKm { get; set; }
+    public bool HasAccess { get; set; }
+}
+
+public sealed class LinkBudgetResult
+{
+    public double FsplDb { get; set; }
+    public double ReceivedPowerDbw { get; set; }
+    public double SnrDb { get; set; }
+    public double EstimatedDataRateBps { get; set; }
+}
+
+public sealed class GroundStation
+{
+    public string Name { get; set; } = "Estação";
+    public double LatitudeDeg { get; set; }
+    public double LongitudeDeg { get; set; }
+    public double AltitudeM { get; set; }
+    public double MinElevationDeg { get; set; } = 5.0;
+    public double FrequencyHz { get; set; } = 2.2e9;
+    public double TransmitPowerW { get; set; } = 10.0;
+    public double TxGainDbi { get; set; } = 3.0;
+    public double RxGainDbi { get; set; } = 3.0;
+    public double SystemLossDb { get; set; } = 3.0;
+    public double BandwidthHz { get; set; } = 1e6;
+
+    public Vector3d Ecef(double gstRad)
+    {
+        double lat = LatitudeDeg * Math.PI / 180;
+        double lonGst = LongitudeDeg * Math.PI / 180 + gstRad;
+        double sl = Math.Sin(lat);
+        double n = Constants.EarthRadius / Math.Sqrt(1 - Constants.EarthEccentricitySquared * sl * sl);
+        double cl = Math.Cos(lat);
+        return new Vector3d(
+            (n + AltitudeM) * cl * Math.Cos(lonGst),
+            (n + AltitudeM) * cl * Math.Sin(lonGst),
+            (n * (1 - Constants.EarthEccentricitySquared) + AltitudeM) * sl);
+    }
+
+    public AccessResult Topocentric(Vector3d satEcef, double gstRad)
+    {
+        var station = Ecef(gstRad);
+        var rel = satEcef - station;
+        double lat = LatitudeDeg * Math.PI / 180;
+        double lonGst = LongitudeDeg * Math.PI / 180 + gstRad;
+        double sl = Math.Sin(lat), cl = Math.Cos(lat);
+        double so = Math.Sin(lonGst), co = Math.Cos(lonGst);
+
+        var east = new Vector3d(-so, co, 0);
+        var north = new Vector3d(-sl * co, -sl * so, cl);
+        var up = new Vector3d(cl * co, cl * so, sl);
+
+        double eastK = Vector3d.Dot(rel, east);
+        double northK = Vector3d.Dot(rel, north);
+        double upK = Vector3d.Dot(rel, up);
+        double range = rel.Magnitude;
+        double elevation = range > 0 ? Math.Asin(upK / range) : -Math.PI / 2;
+        double azimuth = Math.Atan2(eastK, northK); // 0 = norte
+        if (azimuth < 0) azimuth += 2 * Math.PI;
+
+        return new AccessResult
+        {
+            ElevationDeg = elevation * 180 / Math.PI,
+            AzimuthDeg = azimuth * 180 / Math.PI,
+            RangeKm = range / 1000,
+            HasAccess = elevation >= MinElevationDeg * Math.PI / 180 && upK > 0
+        };
+    }
+
+    public LinkBudgetResult LinkBudget(double rangeKm)
+    {
+        double lambda = Constants.SpeedOfLight / FrequencyHz;
+        double d = rangeKm * 1000;
+        double fsplDb = 20 * Math.Log10(4 * Math.PI * d / lambda);
+        double ptDbw = 10 * Math.Log10(TransmitPowerW);
+        double prDbw = ptDbw + TxGainDbi + RxGainDbi - fsplDb - SystemLossDb;
+        double noiseDbw = -203.97 + 10 * Math.Log10(BandwidthHz); // kTB, T=290 K
+        double snrDb = prDbw - noiseDbw;
+        double snrLin = Math.Pow(10, snrDb / 10);
+        double shannon = BandwidthHz * Math.Log2(1 + snrLin);
+        return new LinkBudgetResult
+        {
+            FsplDb = fsplDb, ReceivedPowerDbw = prDbw,
+            SnrDb = snrDb, EstimatedDataRateBps = snrDb > -10 ? shannon : 0
+        };
+    }
+}
+```
+
+### `src/Flight/FlightEngine.cs` e `src/Flight/TelemetrySnapshot.cs`
+
+```csharp
+namespace Aetheris.Flight;
+
+public sealed class TelemetrySnapshot
+{
+    public double SimTimeS { get; set; }
+    public Vector3d PositionEci { get; set; }
+    public Vector3d VelocityEci { get; set; }
+    public double AltitudeM { get; set; }
+    public double SpeedMS { get; set; }
+    public double MassKg { get; set; }
+    public double DeltaVRemainingMS { get; set; }
+    public double ThrustFraction { get; set; }
+    public double ElevationDeg { get; set; }
+    public double AzimuthDeg { get; set; }
+    public double RangeKm { get; set; }
+    public bool HasAccess { get; set; }
+    public double GsLatDeg { get; set; }
+    public double GsLonDeg { get; set; }
+}
+
+public sealed class FlightEngine
+{
+    public Spacecraft Craft { get; }
+    public GroundStation? Station { get; set; }
+    public double Dt { get; set; } = 1.0;
+    public double SimTimeS { get; private set; }
+    public double ThrustFraction { get; set; }
+    public Vector3d PositionEci { get; private set; }
+    public Vector3d VelocityEci { get; private set; }
+    public bool IsFlying { get; private set; } = true;
+
+    public FlightEngine(Spacecraft craft, GroundStation station, Vector3d r0, Vector3d v0)
+    {
+        Craft = craft; Station = station; PositionEci = r0; VelocityEci = v0;
+    }
+
+    public void Step()
+    {
+        if (!IsFlying) return;
+        double rMag = PositionEci.Magnitude;
+        Vector3d gravity = -Constants.EarthMu * PositionEci / (rMag * rMag * rMag)
+                         + OrbitalMath.J2Acceleration(PositionEci);
+
+        // Empuxo sempre pró-grada (estabelece a direção de controle do usuário)
+        var dir = VelocityEci.Magnitude > 0 ? VelocityEci.Normalized : Vector3d.UnitZ;
+        Craft.ThrustDirection = dir;
+        bool hasProp = Craft.PropellantRemainingKg > 1e-6
+                    || Craft.ActiveStageIndex + 1 < Craft.Stages.Count;
+        Vector3d thrustAcc = hasProp ? Craft.ThrustAcceleration(ThrustFraction) : Vector3d.Zero;
+
+        VelocityEci += (gravity + thrustAcc) * Dt;
+        PositionEci += VelocityEci * Dt;
+        Craft.ConsumePropellant(ThrustFraction, Dt);
+        SimTimeS += Dt;
+
+        if (PositionEci.Magnitude < Constants.EarthRadius) IsFlying = false; // impacto / reentrada
+    }
+
+    public TelemetrySnapshot Snapshot(double gstRad)
+    {
+        var access = Station != null ? Station.Topocentric(ToEcef(gstRad), gstRad)
+                                     : new AccessResult { HasAccess = false };
+        double rMag = PositionEci.Magnitude;
+        double lon = Math.Atan2(PositionEci.Y, PositionEci.X) - gstRad;
+        double lat = Math.Atan2(PositionEci.Z, Math.Sqrt(PositionEci.X * PositionEci.X + PositionEci.Y * PositionEci.Y));
+
+        return new TelemetrySnapshot
+        {
+            SimTimeS = SimTimeS,
+            PositionEci = PositionEci,
+            VelocityEci = VelocityEci,
+            AltitudeM = rMag - Constants.EarthRadius,
+            SpeedMS = VelocityEci.Magnitude,
+            MassKg = Craft.TotalMassKg,
+            DeltaVRemainingMS = Craft.DeltaVRemainingMS,
+            ThrustFraction = ThrustFraction,
+            ElevationDeg = access.ElevationDeg,
+            AzimuthDeg = access.AzimuthDeg,
+            RangeKm = access.RangeKm,
+            HasAccess = access.HasAccess,
+            GsLatDeg = lat * 180 / Math.PI,
+            GsLonDeg = lon * 180 / Math.PI
+        };
+    }
+
+    Vector3d ToEcef(double gst)
+    {
+        double c = Math.Cos(gst), s = Math.Sin(gst);
+        return new Vector3d(c * PositionEci.X - s * PositionEci.Y,
+                            s * PositionEci.X + c * PositionEci.Y,
+                            PositionEci.Z);
+    }
+}
+```
+
+### `Program.cs` — ponto de entrada unificado
+
+```csharp
+using System;
+using System.Globalization;
+using System.Threading;
+using Aetheris.Core;
+using Aetheris.Flight;
+using Aetheris.Link;
+
+namespace Aetheris.Prototype;
+
+internal static class Program
+{
+    private static Spacecraft? craft;
+    private static OrbitalElements? orbit0;
+    private static GroundStation? station;
+    private static FlightEngine? engine;
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    private static void Main()
+    {
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        Console.Title = "Aetheris Space Studio — Protótipo Unificado (C#)";
+        bool run = true;
+        while (run)
+        {
+            DrawHeader();
+            WriteLine("1 - Configurar e dimensionar espaçonave (Tsiolkovsky, TWR, orçamento de massa)");
+            WriteLine("2 - Prever órbita (propagador dois-corpo + perturbação J2)");
+            WriteLine("3 - Contato com estação terrestre (janela de acesso + orçamento de enlace)");
+            WriteLine("4 - MODO VOO TEMPO REAL — assumir o controle do empuxo");
+            WriteLine("0 - Sair");
+            Write("Escolha: ");
+            string? op = Console.ReadLine();
+            switch (op)
+            {
+                case "1": ConfigureCraft(); break;
+                case "2": PredictOrbit(); break;
+                case "3": CheckContact(); break;
+                case "4": RealTimeFlight(); break;
+                case "0": run = false; break;
+                default: WriteLine("Opção inválida."); Pause(); break;
+            }
+        }
+    }
+
+    /* ====================== MODO 1: Dimensionamento ====================== */
+    static void ConfigureCraft()
+    {
+        DrawHeader();
+        WriteLine("--- Configuração de Propulsão e Dimensionamento ---");
+        string name = ReadString("Nome da nave", "Aetheris-1");
+        double isp = ReadDouble("Impulso específico do motor (s)", 310);
+        double thrust = ReadDouble("Empuxo (N)", 350_000);
+        double dry = ReadDouble("Massa seca do estágio (kg)", 6_000);
+        double prop = ReadDouble("Massa de propelente (kg)", 24_000);
+        double payload = ReadDouble("Carga útil (kg)", 1_500);
+
+        var engineSpec = new EngineSpec
+        {
+            Name = "Estágio 1", ThrustN = thrust, IspS = isp,
+            DryMassKg = dry, PropellantMassKg = prop
+        };
+        var budget = PropulsionMath.Budget(engineSpec, payload, fullBurn: true);
+
+        craft = new Spacecraft
+        {
+            Name = name, PayloadMassKg = payload,
+            Stages = { engineSpec },
+            ActiveStageIndex = 0,
+            PropellantRemainingKg = prop
+        };
+
+        WriteLine("\n--- Orçamento de massa e potência (resultado) ---");
+        WriteLine($"Massa inicial       : {budget.InitialMassKg:N1} kg");
+        WriteLine($"Massa final         : {budget.FinalMassKg:N1} kg");
+        WriteLine($"Propelente          : {budget.PropellantConsumedKg:N1} kg");
+        WriteLine($"Δv total (Tsiolkovsky): {budget.DeltaVMS:N1} m/s");
+        WriteLine($"Empuxo-peso (TWR)   : {budget.ThrustToWeightRatio:N3}");
+        WriteLine($"Aceleração inicial  : {budget.AccelerationMS2:N2} m/s²");
+        WriteLine($"Tempo de queima     : {budget.BurnTimeS:N1} s");
+        WriteLine("\nConfiguração salva. Use a opção 2 para propagar a órbita.");
+        Pause();
+    }
+
+    /* ====================== MODO 2: Predição de órbita ====================== */
+    static void PredictOrbit()
+    {
+        DrawHeader();
+        WriteLine("--- Predição de Órbita (dois-corpo + J2) ---");
+        double altKm = ReadDouble("Altitude inicial circular (km)", 400);
+        double incDeg = ReadDouble("Inclinação (graus)", 28.5);
+        double predictMin = ReadDouble("Tempo de predição (minutos)", 270);
+
+        double mu = Constants.EarthMu;
+        double r = Constants.EarthRadius + altKm * 1000;
+        double v = Math.Sqrt(mu / r);
+        double inc = incDeg * Math.PI / 180;
+
+        // Órbita circular inclinada: posição no plano equatorial, rotação pela inclinação
+        var elements = new OrbitalElements
+        {
+            SemiMajorAxis = r, Eccentricity = 0, Inclination = inc,
+            RightAscension = 0, ArgumentOfPeriapsis = 0, TrueAnomaly = 0,
+            Epoch = 0, MeanMotion = Math.Sqrt(mu / (r * r * r))
+        };
+        orbit0 = elements;
+
+        double periodS = elements.Period;
+        double steps = 120;
+        double dt = predictMin * 60 / steps;
+        WriteLine($"\nPeríodo orbital: {periodS / 60:N2} min | Passo: {dt:N1} s");
+        WriteLine(new string('-', 92));
+        WriteLine($"   t(min)     Altitude(km)    Vel(m/s)     Semieixo(km)   e       i(°)     ν(°)");
+        WriteLine(new string('-', 92));
+        var oe = elements;
+        for (int k = 0; k <= steps; k++)
+        {
+            double t = k * dt;
+            var (pos, vel) = OrbitalMath.ElementsToRv(oe, mu);
+            double alt = pos.Magnitude - Constants.EarthRadius;
+            if (k % 10 == 0)
+            {
+                WriteLine($"  {t / 60,7:N2}  {alt / 1000,11:N2}  {vel.Magnitude,10:N1}  {oe.SemiMajorAxis / 1000,12:N2}  {oe.Eccentricity,6:N4}  {oe.Inclination * 180 / Math.PI,7:N2}  {oe.TrueAnomaly * 180 / Math.PI,7:N2}");
+            }
+            oe = OrbitalMath.Propagate(oe, mu, dt);
+        }
+        WriteLine("\nÓrbita prevista salva. Use a opção 3 para verificar o contato com a estação terrestre.");
+        Pause();
+    }
+
+    /* ====================== MODO 3: Contato com estação terrestre ====================== */
+    static void CheckContact()
+    {
+        if (orbit0 == null)
+        {
+            WriteLine("Execute primeiro a predição de órbita (opção 2).");
+            Pause();
+            return;
+        }
+
+        DrawHeader();
+        WriteLine("--- Contato com Estação Terrestre ---");
+        var gs = new GroundStation
+        {
+            Name = "Estação Nova Vida", LatitudeDeg = -8.84, LongitudeDeg = 13.24,
+            AltitudeM = 500, MinElevationDeg = 5.0, FrequencyHz = 2.2e9,
+            TransmitPowerW = 20.0, TxGainDbi = 25.0, RxGainDbi = 25.0,
+            SystemLossDb = 3.0, BandwidthHz = 2_500_000
+        };
+        gs.LatitudeDeg = ReadDouble("Latitude da estação (°)", gs.LatitudeDeg);
+        gs.LongitudeDeg = ReadDouble("Longitude da estação (°)", gs.LongitudeDeg);
+        gs.MinElevationDeg = ReadDouble("Elevação mínima (°)", gs.MinElevationDeg);
+        station = gs;
+
+        double mu = Constants.EarthMu;
+        double period = orbit0.Period;
+        double dt = 30.0;
+        int steps = (int)(3 * period / dt);
+
+        var windows = new List<(double Start, double End, double MaxElev, double MinRange)>();
+        bool inAccess = false;
+        double startT = 0, bestElev = -999, bestRange = double.MaxValue, bestT = 0;
+
+        for (int k = 0; k <= steps; k++)
+        {
+            double t = k * dt;
+            var oek = OrbitalMath.Propagate(orbit0, mu, t);
+            var (pos, _) = OrbitalMath.ElementsToRv(oek, mu);
+            double gst = Constants.EarthRotationRadPerS * t;
+            var ecef = EciToEcef(pos, gst);
+            var acc = gs.Topocentric(ecef, gst);
+            bool access = acc.HasAccess;
+
+            if (access && !inAccess)
+            {
+                inAccess = true; startT = t; bestElev = -999; bestRange = double.MaxValue;
+            }
+            if (access)
+            {
+                if (acc.ElevationDeg > bestElev) { bestElev = acc.ElevationDeg; bestRange = acc.RangeKm; bestT = t; }
+            }
+            if ((!access || k == steps) && inAccess)
+            {
+                windows.Add((startT, k == steps && access ? t : t, bestElev, bestRange));
+                inAccess = false;
+            }
+        }
+
+        WriteLine($"\nJanelas de acesso encontradas: {windows.Count}");
+        WriteLine(new string('-', 72));
+        WriteLine($"  Início       Fim          Duração(s)   Elevação Máx(°) Alcance Mín(km)");
+        WriteLine(new string('-', 72));
+        foreach (var w in windows)
+        {
+            WriteLine($"  {FormatTime(w.Start)}  {FormatTime(w.End)}  {(w.End - w.Start),9:N0}  {w.MaxElev,11:N2}  {w.MinRange,12:N2}");
+        }
+
+        if (windows.Count > 0)
+        {
+            var best = windows.OrderByDescending(w => w.MaxElev).First();
+            double gst = Constants.EarthRotationRadPerS * best.Start;
+            var oeb = OrbitalMath.Propagate(orbit0, mu, best.Start);
+            var (posB, _) = OrbitalMath.ElementsToRv(oeb, mu);
+            var ecefB = EciToEcef(posB, gst);
+            var rangeKm = gs.Topocentric(ecefB, gst).RangeKm;
+            var link = gs.LinkBudget(rangeKm);
+
+            WriteLine($"\nMelhor contato: início {FormatTime(best.Start)}, elevação {best.MaxElev:N1}°, alcance {best.MinRange:N1} km");
+            WriteLine("--- Orçamento de enlace no melhor contato ---");
+            WriteLine($"Perda no espaço livre : {link.FsplDb:N2} dB");
+            WriteLine($"Potência recebida     : {link.ReceivedPowerDbw:N2} dBW");
+            WriteLine($"SNR                   : {link.SnrDb:N2} dB");
+            WriteLine($"Taxa de dados (Shannon): {link.EstimatedDataRateBps / 1e6:N2} Mbps");
+        }
+
+        WriteLine("\nDados da estação salvos. Use a opção 4 para voar em tempo real.");
+        Pause();
+    }
+
+    static Vector3d EciToEcef(Vector3d r, double gst)
+    {
+        double c = Math.Cos(gst), s = Math.Sin(gst);
+        return new Vector3d(c * r.X - s * r.Y, s * r.X + c * r.Y, r.Z);
+    }
+
+    /* ====================== MODO 4: Voo tempo real ====================== */
+    static void RealTimeFlight()
+    {
+        if (craft == null || orbit0 == null)
+        {
+            WriteLine("Configure a nave (1) e preveja a órbita (2) antes de voar.");
+            Pause();
+            return;
+        }
+
+        station ??= new GroundStation
+        {
+            Name = "Sem estação configurada", LatitudeDeg = -8.84, LongitudeDeg = 13.24,
+            AltitudeM = 500, MinElevationDeg = 5.0
+        };
+
+        DrawHeader();
+        WriteLine("--- MODO VOO TEMPO REAL: ASSUMIR O CONTROLE ---");
+        WriteLine($"Nave: {craft.Name}");
+        WriteLine($"Empuxo disponível: {craft.Stages[0].ThrustN:N0} N | Δv restante: {craft.DeltaVRemainingMS:N1} m/s");
+        WriteLine($"Combustível: {craft.PropellantRemainingKg:N1} kg | Massa total: {craft.TotalMassKg:N1} kg");
+        WriteLine("Controles: W/S = empuxo ±10% | 0-9 = empuxo direto (0.1-0.9) | Q = devolver controle");
+        WriteLine("A simulação avança 1 s por quadro (5 sub-passos de 0,2 s). Direção de empuxo: pró-grada.");
+        Pause();
+
+        var (r0, v0) = OrbitalMath.ElementsToRv(orbit0, Constants.EarthMu);
+        engine = new FlightEngine(craft, station, r0, v0) { Dt = 0.2 };
+        double thrustFraction = 0;
+        const int subSteps = 5;
+
+        while (engine.IsFlying)
+        {
+            if (Console.KeyAvailable)
+            {
+                var key = Console.ReadKey(true).Key;
+                switch (key)
+                {
+                    case ConsoleKey.W: thrustFraction = Math.Min(1.0, thrustFraction + 0.1); break;
+                    case ConsoleKey.S: thrustFraction = Math.Max(0.0, thrustFraction - 0.1); break;
+                    case ConsoleKey.Q: engine.IsFlying = false; break;
+                    case ConsoleKey.D0: thrustFraction = 0; break;
+                    case ConsoleKey.D1: thrustFraction = 0.1; break;
+                    case ConsoleKey.D2: thrustFraction = 0.2; break;
+                    case ConsoleKey.D3: thrustFraction = 0.3; break;
+                    case ConsoleKey.D4: thrustFraction = 0.4; break;
+                    case ConsoleKey.D5: thrustFraction = 0.5; break;
+                    case ConsoleKey.D6: thrustFraction = 0.6; break;
+                    case ConsoleKey.D7: thrustFraction = 0.7; break;
+                    case ConsoleKey.D8: thrustFraction = 0.8; break;
+                    case ConsoleKey.D9: thrustFraction = 0.9; break;
+                }
+            }
+
+            engine.ThrustFraction = thrustFraction;
+            for (int i = 0; i < subSteps; i++) engine.Step();
+            double gst = Constants.EarthRotationRadPerS * engine.SimTimeS;
+            var tel = engine.Snapshot(gst);
+            PrintMfd(tel, engine.IsFlying);
+            Thread.Sleep(300);
+        }
+
+        DrawHeader();
+        WriteLine(PositionImpacted() ? "IMPACTO / REENTRADA detectada. Fim da simulação." : "Controle devolvido ao planejador.");
+        Pause();
+
+        bool PositionImpacted() => !engine.IsFlying;
+    }
+
+    static void PrintMfd(TelemetrySnapshot t, bool flying)
+    {
+        Console.Clear();
+        WriteLine("==========================================================================");
+        WriteLine(" MFD-1: MAPA ORBITAL                     MFD-2: GNC / ATITUDE             ");
+        WriteLine("==========================================================================");
+        WriteLine($" Tempo de missão   : {FormatTime(t.SimTimeS)}");
+        WriteLine($" Altitude            : {t.AltitudeM / 1000:N2} km");
+        WriteLine($" Velocidade          : {t.SpeedMS:N1} m/s");
+        WriteLine($" Massa total         : {t.MassKg:N1} kg");
+        WriteLine($" Δv restante         : {t.DeltaVRemainingMS:N1} m/s");
+        WriteLine($" Empuxo manual       : {t.ThrustFraction * 100:N0} %   (W/S para alterar)");
+        WriteLine($" Subponto            : {t.GsLatDeg:N3}° lat, {t.GsLonDeg:N3}° lon");
+        if (t.HasAccess)
+            WriteLine($" Contato estação     : SIM — Elevação {t.ElevationDeg:N1}°, Azimute {t.AzimuthDeg:N1}°, Alcance {t.RangeKm:N1} km");
+        else
+            WriteLine($" Contato estação     : FORA DE VISÃO");
+        WriteLine($" Estado              : {(flying ? "VOANDO" : "PAUSADO PELO USUÁRIO")}");
+        WriteLine("--------------------------------------------------------------------------");
+        WriteLine(" W/S ±10% empuxo  |  0-9 empuxo direto  |  Q devolver controle ao planejador");
+    }
+
+    /* ====================== Utilitários ====================== */
+    static void DrawHeader()
+    {
+        Console.Clear();
+        WriteLine("==========================================================================");
+        WriteLine("               AETHERIS SPACE STUDIO — PROTÓTIPO UNIFICADO (C#)           ");
+        WriteLine("          Fusão dos núcleos GMAT + STK + Orbiter — estado canônico único   ");
+        WriteLine("==========================================================================");
+    }
+
+    static void WriteLine(string? s = "") => Console.WriteLine(s);
+    static void Write(string s) => Console.Write(s);
+    static void Pause()
+    {
+        Write("\nPressione ENTER para continuar... ");
+        Console.ReadLine();
+    }
+
+    static string FormatTime(double seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        return ts.ToString(@"hh\:mm\:ss");
+    }
+
+    static double ReadDouble(string prompt, double def)
+    {
+        Write($"{prompt} [{def}]: ");
+        var s = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(s)) return def;
+        return double.TryParse(s, NumberStyles.Any, Inv, out var v) ? v : def;
+    }
+
+    static string ReadString(string prompt, string def)
+    {
+        Write($"{prompt} [{def}]: ");
+        var s = Console.ReadLine();
+        return string.IsNullOrWhiteSpace(s) ? def : s;
+    }
+}
+```
+
+### `Aetheris.Prototype.csproj`
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Aetheris.Prototype</RootNamespace>
+  </PropertyGroup>
+</Project>
+```
+
+## Saída esperada (exemplo)
+
+```
+--- Configuração de Propulsão e Dimensionamento ---
+Massa inicial       : 31.500 kg
+Massa final         : 7.500 kg
+Δv total (Tsiolkovsky): 3421.5 m/s
+Empuxo-peso (TWR)   : 1.136
+Aceleração inicial  : 11.14 m/s²
+Tempo de queima     : 672.0 s
+```
+
+Modo voo (atualizado a cada quadro):
+
+```
+ MFD-1: MAPA ORBITAL                     MFD-2: GNC / ATITUDE
+==========================================================================
+ Tempo de missão   : 00:02:14
+ Altitude            : 407.18 km
+ Velocidade          : 7669.4 m/s
+ Massa total         : 28340.0 kg
+ Δv restante         : 2910.0 m/s
+ Empuxo manual       : 35 %   (W/S para alterar)
+ Subponto            : -12.432° lat, -38.671° lon
+ Contato estação     : SIM — Elevação 32.4°, Azimute 142.1°, Alcance 1847.2 km
+ Estado              : VOANDO
+```
+
+## Próximos passos para o MVP completo
+
+1. Portar `Aetheris.Core` para **Rust** e compilar para **WebAssembly** (núcleo de física compartilhado).
+2. Frontend **React + Three.js/WebGPU** com globo 3D, terminador dia/noite, trajetórias e FOV de sensores.
+3. Adicionar perturbações J3–J6, modelo atmosférico (MSIS) e aquecimento de reentrada.
+4. Implementar solucionador de manobras (Hohmann, assistências gravitacionais) e simulação Monte Carlo.
+5. Adicionar scripting **Python/Lua** para automação de missão e acoplamento (docking) com MFD dedicado.

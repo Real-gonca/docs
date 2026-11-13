@@ -1,0 +1,60 @@
+---
+title: "Arquitetura de Dados"
+description: "Diagrama de fluxo de estado da espaçonave entre o planejador astrodinâmico, o analisador de enlaces e o motor de voo em tempo real."
+---
+
+# Arquitetura de Dados — Aetheris Space Studio
+
+## Princípio: um único estado canônico
+
+Todos os quatro módulos compartilham o **mesmo motor de física** e operam sobre um **estado canônico único da espaçonave** (*single source of truth*):
+
+- Vetor de estado inercial: posição **r** e velocidade **v** (ECI, precisão dupla de 64 bits)
+- Massa total, massa por estágio e propelente restante
+- Configuração de subsistemas (propulsão, energia, antenas, sensores ópticos)
+- **Relógio de missão sincronizado**: uma única fonte de tempo que alimenta o planejador e o motor de voo
+
+O estado é tratado como **snapshot imutável** e publicado num barramento de eventos (in-process no Wasm; WebSocket na versão web), de modo que nenhum módulo grava diretamente no estado de outro — cada transição gera um novo snapshot versionado por tempo de missão.
+
+## Diagrama de fluxo de dados
+
+```mermaid
+flowchart LR
+    subgraph Core["Motor de Física Unificado (Wasm — Rust / C++)"]
+    CS[(Estado canônico da nave<br/>r, v, massa, subsistemas)]
+    MC[(Relógio da missão<br/>tempo sincronizado)]
+    end
+
+    M1[Módulo 1<br/>Construtor e Dimensionamento]
+    M2[Módulo 2<br/>Planejador Astrodinâmico]
+    M3[Módulo 3<br/>Análise Multidomínio e Comunicações]
+    M4[Módulo 4<br/>Simulador de Voo e Operações]
+
+    M1 -->|propriedades de massa,<br/>modelo de propulsão, estágios| CS
+    M2 -->|trajetória planejada,<br/>manobras Δv, épocas| CS
+    CS -->|vetor de estado + massa| M3
+    CS -->|estado em tempo real| M4
+    M3 -->|janelas de acesso (Access),<br/>orçamento de enlace, FOV| M4
+    M4 -->|telemetria, "assumir o controle",<br/>queima manual de empuxo| CS
+    GS[Catálogo: estações terrestres,<br/>sensores, terreno] --> M3
+    U[Usuário: parâmetros de propulsão<br/>e controle manual] --> M1
+    U --> M4
+    MC --> M2
+    MC --> M4
+```
+
+## Como o estado flui — passo a passo
+
+1. **Módulo 1** recebe os parâmetros de propulsão do usuário (impulso específico, empuxo, massas de estágio), executa a equação de Tsiolkovsky, calcula TWR e o orçamento de massa/potência, e publica as propriedades da nave no estado canônico.
+2. **Módulo 2** consome o estado inicial e propaga a órbita com precisão (J2–J6, arrasto atmosférico, pressão de radiação solar); gera a trajetória planejada e as manobras (Hohmann, assistências gravitacionais, otimização de Δv) e executa a simulação Monte Carlo de dispersão de erros de lançamento e queima.
+3. **Módulo 3** consome o estado propagado mais o catálogo de estações terrestres e sensores; calcula janelas de visibilidade (*access*, elevação acima do limiar), orçamento de enlace (lei de Friis, taxa de dados, atenuação) e projeção do FOV de sensores/câmeras na superfície planetária.
+4. **Módulo 4** consome o estado canônico e integra a física newtoniana em tempo real. A qualquer instante o usuário pode **assumir o controle**: o planejador é pausado, o motor de voo assume a integração contínua e o usuário comanda empuxo e atitude manualmente (MFD GNC).
+5. A telemetria do Módulo 4 volta ao estado canônico (nova posição, velocidade e massa), fechando o ciclo para que os Módulos 2 e 3 continuem trabalhando sobre o estado real do voo em andamento.
+
+## Precisão numérica
+
+Em escalas interplanetárias, coordenadas de 32 bits produzem *jitter* visual. O núcleo de física mantém todo o cálculo em `f64` (dupla precisão); a renderização usa câmera relativa à origem da nave com emulação de 64 bits para eliminar o fenômeno.
+
+## Automação
+
+Scripts **Python** (via Pyodide) ou **Lua** podem ler e gravar o estado canônico por uma API de script, possibilitando automação de missão e integração com IA (ex.: planejamento de manobras por aprendizado por reforço).

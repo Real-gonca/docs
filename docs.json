@@ -66,6 +66,32 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Aetheris Space Studio",
+        "groups": [
+          {
+            "group": "Visão do Produto",
+            "pages": [
+              "aetheris/index"
+            ]
+          },
+          {
+            "group": "Arquitetura",
+            "pages": [
+              "aetheris/architecture",
+              "aetheris/modules",
+              "aetheris/stack",
+              "aetheris/folder-structure"
+            ]
+          },
+          {
+            "group": "Protótipo (C#)",
+            "pages": [
+              "aetheris/prototype"
+            ]
+          }
+        ]
       }
     ],
     "global": {

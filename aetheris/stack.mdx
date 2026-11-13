@@ -1,0 +1,33 @@
+---
+title: "Stack Tecnológico e Requisitos Não-Funcionais"
+description: "Stack sugerido, requisitos não-funcionais e decisões de arquitetura do Aetheris Space Studio."
+---
+
+# Stack Tecnológico e Requisitos Não-Funcionais
+
+## Requisitos não-funcionais
+
+| Categoria | Requisito | Como é atendido |
+|---|---|---|
+| **Desempenho** | Simulação em tempo real (≥ 30 Hz de integração) sem travar a interface | Motor de física em WebAssembly (Rust/C++); UI desacoplada via barramento de eventos |
+| **Precisão** | Sem jitter em escalas interplanetárias | Ponto flutuante de 64 bits no núcleo; câmera relativa + emulação de double na renderização |
+| **Determinismo** | Mesma missão dada mesma entrada produz mesmo resultado | Integração numérica determinística; semente de aleatoriedade configurável no Monte Carlo |
+| **Abertura** | Código aberto, extensível e auditarível | Repositório público, licença permissiva, APIs de script Python/Lua |
+| **Portabilidade** | Roda no navegador e localmente | Build Wasm para web; binário nativo para estações de engenharia |
+
+## Stack sugerido
+
+| Camada | Tecnologia | Justificativa |
+|---|---|---|
+| **Frontend / Visualização** | TypeScript, React, Three.js ou WebGPU | Renderização 3D acelerada por GPU no navegador; ecossistema maduro |
+| **Motor de física** | Rust (Wasm) ou C++ (Wasm) | Cálculos astrodinâmicos pesados em tempo real; determinismo e desempenho |
+| **Scripting / Automação** | Python (Pyodide) e Lua | Automação de missão, integração com IA e ferramentas de engenharia |
+| **Comunicação** | WebSocket + JSON/Protobuf | Fluxo de estado canônico entre módulos (local e remoto) |
+| **Persistência / Dados** | JSON, Protobuf, TimescaleDB (opcional) | Telemetria de séries temporais e históricos de missão |
+| **Testes e validação** | Monte Carlo, dados de referência GMAT/STK/Orbiter | Validação contra ferramentas herdadas |
+
+## Decisões de arquitetura (ADR resumo)
+
+1. **Fonte única de verdade:** existe um único estado canônico da nave; módulos são leitores/escritores controlados por versão de tempo de missão.
+2. **Física unificada:** o mesmo integrador newtoniano serve o planejador (propagação) e o simulador de voo (execução), eliminando incompatibilidades entre "papel" e "voo".
+3. **Web-first com escape hatch:** tudo roda no navegador; o núcleo Wasm pode ser extraído para execução local nativa quando maior desempenho for necessário.

@@ -1,0 +1,60 @@
+---
+title: "Módulos Funcionais"
+description: "Requisitos funcionais dos quatro módulos integrados do Aetheris Space Studio."
+---
+
+# Módulos Funcionais
+
+Cada módulo abaixo consome e produz dados sobre o **estado canônico compartilhado**, executando sobre o mesmo motor de física.
+
+## Módulo 1 — Construtor e Dimensionamento (Engenharia de Sistemas)
+
+| ID | Requisito |
+|---|---|
+| MF1.1 | Cálculo automatizado da equação de Tsiolkovsky (Δv = Isp · g₀ · ln(m₀/mf)). |
+| MF1.2 | Dimensionamento de estagiamento: desacoplamento de estágios e cálculo de Δv por estágio e total. |
+| MF1.3 | Razão empuxo-peso (TWR = empuxo / (massa · g₀)) com verificação de capacidade de decolagem (TWR > 1). |
+| MF1.4 | Orçamento de massa e potência: massa seca, propelente, carga útil, painéis solares e baterias. |
+| MF1.5 | Configuração de subsistemas da espaçonave: motores químicos e elétricos, tanques, painéis solares, antenas e sensores ópticos. |
+
+**Entradas:** parâmetros de propulsão, massa de estágios, carga útil.  
+**Saídas:** propriedades de massa, modelo de propulsão, Δv disponível por estágio, TWR.
+
+## Módulo 2 — Planejador Astrodinâmico (núcleo GMAT)
+
+| ID | Requisito |
+|---|---|
+| MF2.1 | Propagação orbital de alta precisão com perturbadores gravitacionais J2–J6. |
+| MF2.2 | Modelos de arrasto atmosférico e pressão de radiação solar. |
+| MF2.3 | Solucionador de manobras: transferências de Hohmann, assistências gravitacionais e otimização de Δv. |
+| MF2.4 | Simulador de Monte Carlo para dispersão de erros de lançamento e queima (incertezas de empuxo, orientação e massa). |
+| MF2.5 | Cálculo de janelas de lançamento e efemérides planetárias. |
+
+**Entradas:** estado inicial (Módulo 1), restrições de missão.  
+**Saídas:** trajetória planejada (vetores de estado vs. tempo), manobras com épocas e Δv, dispersões estatísticas.
+
+## Módulo 3 — Análise Multidomínio e Comunicações (núcleo STK)
+
+| ID | Requisito |
+|---|---|
+| MF3.1 | Visualização 3D do globo terrestre/planetário com linha do terminador (dia/noite), terreno e órbitas em tempo real. |
+| MF3.2 | Cálculo dinâmico de janelas de visibilidade (*Access*) entre satélite e estações terrestres, incluindo linha de visão e elevação. |
+| MF3.3 | Orçamento de enlace (link budget): taxa de dados, ganhos de antena, perda no espaço livre e atenuação de sinal. |
+| MF3.4 | Projeção em tempo real do campo de visão (FOV) de sensores e câmeras sobre a superfície. |
+| MF3.5 | Análise de terreno e iluminação (ângulos solares, eclipses). |
+
+**Entradas:** estado propagado (Módulo 2), catálogo de estações terrestres e sensores.  
+**Saídas:** janelas de acesso, orçamento de enlace por instante, mapas de cobertura/FOV.
+
+## Módulo 4 — Simulador de Voo e Operações em Tempo Real (núcleo Orbiter)
+
+| ID | Requisito |
+|---|---|
+| MF4.1 | Modo "Assumir o Controle" a qualquer instante da linha do tempo da missão. |
+| MF4.2 | Física atmosférica completa para subida (pressão dinâmica Max Q) e reentrada térmica. |
+| MF4.3 | Acoplamento orbital (docking) com aproximação guiada por MFD. |
+| MF4.4 | Painel de telemetria interativo com MFDs configuráveis: Mapa Orbital, Alinhamento de Plano, Acoplamento/Docking e Controle de Atitude GNC. |
+| MF4.5 | Controle manual de empuxo e atitude em tempo real, com feedback de telemetria. |
+
+**Entradas:** estado canônico, comandos do usuário (empuxo, atitude).  
+**Saídas:** telemetria de voo atualizada, estado pós-queima de volta ao canônico.
