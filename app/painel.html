@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-AO">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Painel administrativo e de validação linguística - Línguas de Angola.">
+  <title>Painel administrativo — Línguas de Angola</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Saltar para o conteúdo principal</a>
+  <header class="site-header" role="banner">
+    <div class="container nav-wrap">
+      <a class="brand" href="index.html" aria-label="Línguas de Angola - Página inicial">
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><clipPath id="mark-clip"><circle cx="32" cy="32" r="30"/></clipPath></defs><g clip-path="url(#mark-clip)"><rect x="2" y="2" width="60" height="30" fill="#CE1126"/><rect x="2" y="32" width="60" height="30" fill="#1A1A1A"/><polygon points="32,14 35.5,24.5 46.5,24.5 37.5,31 41,41.5 32,35 23,41.5 26.5,31 17.5,24.5 28.5,24.5" fill="#F7D117"/></g></svg>
+        <span class="brand-name">Línguas de <span>Angola</span></span>
+      </a>
+      <button class="nav-toggle" aria-expanded="false" aria-controls="nav-main" aria-label="Abrir menu de navegação"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <nav id="nav-main" class="nav-main" aria-label="Navegação principal">
+        <a class="nav-link" href="index.html">Início</a><a class="nav-link" href="traducao.html">Traduzir</a><a class="nav-link" href="dicionario.html">Dicionário</a><a class="nav-link" href="frases.html">Frases úteis</a><a class="nav-link" href="painel.html">Painel</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="btn btn-ghost btn-icon contrast-toggle" type="button" aria-pressed="false" aria-label="Alternar alto contraste"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" stroke="none"/></svg></button>
+        <button class="btn btn-ghost btn-icon theme-toggle" type="button" aria-pressed="false" aria-label="Alternar tema claro e escuro"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
+        <a class="btn btn-secondary btn-sm auth-login-link" href="login.html">Entrar</a>
+      </div>
+    </div>
+  </header>
+  <main id="conteudo">
+    <section class="page-hero" aria-labelledby="page-title">
+      <div class="container">
+        <p class="section-label">Administração</p>
+        <h1 id="page-title">Painel administrativo</h1>
+        <p>Área demonstrativa para gestão de línguas, palavras, frases, traduções, áudios, sugestões, categorias e relatórios. Em produção, este painel deve estar protegido por autenticação no servidor e controlo de permissões por perfil.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container" id="admin-panel">
+        <div id="admin-gate" style="margin-bottom:1.5rem;"></div>
+
+        <div id="admin-content" style="display:none;">
+          <!-- Stats -->
+          <div class="stats-grid" aria-label="Estatísticas">
+            <div class="stat-card"><div class="stat-value" id="stat-words">0</div><div class="stat-label">Palavras no dicionário</div></div>
+            <div class="stat-card"><div class="stat-value" id="stat-phrases">0</div><div class="stat-label">Frases úteis</div></div>
+            <div class="stat-card"><div class="stat-value" id="stat-suggestions">0</div><div class="stat-label">Sugestões recebidas</div></div>
+            <div class="stat-card"><div class="stat-value" id="stat-history">0</div><div class="stat-label">Traduções no histórico local</div></div>
+          </div>
+
+          <div class="admin-grid">
+            <!-- Cadastro -->
+            <div class="panel card-static admin-section">
+              <h3>Cadastro de palavras e traduções</h3>
+              <p class="text-muted" style="font-size:0.9rem;margin-bottom:1rem;">Demonstração de gestão de conteúdo. Em produção, os dados devem ser persistidos numa base de dados com auditoria.</p>
+              <form id="admin-word-form" class="form-stack">
+                <div class="form-row">
+                  <div class="field">
+                    <label for="aw-lang">Língua nacional</label>
+                    <select id="aw-lang" class="input" required>
+                      <option value="umbundu">Umbundu</option><option value="kimbundu">Kimbundu</option><option value="cokwe">Côkwe</option><option value="kikongo">Kikongo</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="aw-category">Categoria</label>
+                    <select id="aw-category" class="input">
+                      <option value="educacao">Educação</option><option value="saude">Saúde</option><option value="agricultura">Agricultura</option><option value="comercio">Comércio</option><option value="construcao">Construção civil</option><option value="transportes">Transportes</option><option value="hotelaria">Hotelaria e turismo</option><option value="justica">Justiça</option><option value="administracao">Administração pública</option><option value="tecnologia">Tecnologia</option><option value="financas">Finanças</option><option value="comunicacao">Comunicação social</option><option value="seguranca">Segurança no trabalho</option><option value="comunitarias">Organizações comunitárias</option><option value="igrejas">Igrejas</option><option value="humanitario">Trabalho humanitário</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field"><label for="aw-word">Palavra/frase na língua nacional</label><input id="aw-word" class="input" required></div>
+                <div class="form-row">
+                  <div class="field"><label for="aw-pt">Tradução em Português</label><input id="aw-pt" class="input" required></div>
+                  <div class="field"><label for="aw-en">Tradução em Inglês</label><input id="aw-en" class="input" required></div>
+                </div>
+                <div class="form-row">
+                  <div class="field"><label for="aw-region">Região/variante</label><input id="aw-region" class="input" placeholder="Ex.: Huambo"></div>
+                  <div class="field">
+                    <label for="aw-validated">Estado</label>
+                    <select id="aw-validated" class="input"><option value="false">Ainda não validada</option><option value="true">Validada</option></select>
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Registar entrada</button>
+              </form>
+            </div>
+
+            <!-- Gestão / Resumo -->
+            <div class="panel card-static admin-section">
+              <h3>Gestão e controlo</h3>
+              <ul class="check-list" style="margin-bottom:1.5rem;">
+                <li><span class="check" aria-hidden="true">✓</span><span><strong>Línguas nacionais:</strong> Umbundu, Kimbundu, Côkwe, Kikongo (gestão de variantes e regiões).</span></li>
+                <li><span class="check" aria-hidden="true">✓</span><span><strong>Conteúdo:</strong> cadastro de palavras, frases, traduções PT/EN e áudios.</span></li>
+                <li><span class="check" aria-hidden="true">✓</span><span><strong>Revisão:</strong> sugestões de utilizadores, aprovação por linguistas e histórico de alterações.</span></li>
+                <li><span class="check" aria-hidden="true">✓</span><span><strong>Categorias:</strong> gestão de áreas profissionais e contextos de uso.</span></li>
+                <li><span class="check" aria-hidden="true">✓</span><span><strong>Permissões:</strong> perfis de utilizador, linguista e administrador (demonstração).</span></li>
+              </ul>
+              <h4 style="font-size:0.95rem;margin-bottom:0.75rem;font-family:var(--font-body);">Palavras mais pesquisadas (local)</h4>
+              <div id="admin-top-searches"></div>
+            </div>
+          </div>
+
+          <!-- Tabela de entradas -->
+          <div class="admin-section">
+            <h3>Entradas registadas (protótipo)</h3>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Língua</th><th>Palavra/frase</th><th>Português</th><th>Inglês</th><th>Categoria</th><th>Estado</th><th>Data</th></tr></thead>
+                <tbody id="admin-words-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Sugestões -->
+          <div class="admin-section">
+            <h3>Sugestões dos utilizadores</h3>
+            <div id="admin-suggestions" class="history-list"></div>
+          </div>
+
+          <!-- Modelo de dados futuro -->
+          <div class="admin-section">
+            <h3>Estruturas de dados previstas</h3>
+            <p class="text-muted" style="margin-bottom:1rem;font-size:0.93rem;">O protótipo prepara o modelo para implementação futura com base de dados e API.</p>
+            <div class="tag-list" aria-label="Entidades previstas">
+              <span class="tag">Utilizadores</span><span class="tag">Línguas nacionais</span><span class="tag">Variantes regionais</span><span class="tag">Palavras</span><span class="tag">Frases</span><span class="tag">Traduções PT</span><span class="tag">Traduções EN</span><span class="tag">Áudios</span><span class="tag">Categorias profissionais</span><span class="tag">Histórico de traduções</span><span class="tag">Favoritos</span><span class="tag">Sugestões</span><span class="tag">Avaliações</span><span class="tag">Linguistas validadores</span><span class="tag">Histórico de alterações</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand"><a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><g clip-path="url(#mark-clip)"><rect x="2" y="2" width="60" height="30" fill="#CE1126"/><rect x="2" y="32" width="60" height="30" fill="#1A1A1A"/><polygon points="32,14 35.5,24.5 46.5,24.5 37.5,31 41,41.5 32,35 23,41.5 26.5,31 17.5,24.5 28.5,24.5" fill="#F7D117"/></g></svg><span class="brand-name">Línguas de <span>Angola</span></span></a><p>Aproximando pessoas através das línguas de Angola. Protótipo dedicado à inclusão linguística e cultural.</p></div>
+        <div class="footer-col"><h3>Plataforma</h3><ul><li><a href="traducao.html">Traduzir</a></li><li><a href="dicionario.html">Dicionário</a></li><li><a href="frases.html">Frases úteis</a></li><li><a href="painel.html">Painel administrativo</a></li></ul></div>
+        <div class="footer-col"><h3>Contactos</h3><ul><li><a href="mailto:contacto@linguasdeangola.ao">contacto@linguasdeangola.ao</a></li><li><a href="tel:+244900000000">+244 900 000 000</a></li><li>Luanda, Angola</li></ul></div>
+        <div class="footer-col"><h3>Legal</h3><ul><li><a href="termos.html">Termos de uso</a></li><li><a href="privacidade.html">Política de privacidade</a></li></ul></div>
+      </div>
+      <div class="footer-bottom"><p>© 2026 Línguas de Angola. Protótipo demonstrativo. Traduções requerem validação linguística.</p><div class="footer-bottom-links"><a href="termos.html">Termos</a><a href="privacidade.html">Privacidade</a></div></div>
+    </div>
+  </footer>
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

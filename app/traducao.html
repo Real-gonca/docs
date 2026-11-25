@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-AO">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Traduzir línguas nacionais angolanas para Português ou Inglês - Línguas de Angola.">
+  <title>Traduzir — Línguas de Angola</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Saltar para o conteúdo principal</a>
+  <header class="site-header" role="banner">
+    <div class="container nav-wrap">
+      <a class="brand" href="index.html" aria-label="Línguas de Angola - Página inicial">
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+          <defs><clipPath id="mark-clip"><circle cx="32" cy="32" r="30"/></clipPath></defs>
+          <g clip-path="url(#mark-clip)"><rect x="2" y="2" width="60" height="30" fill="#CE1126"/><rect x="2" y="32" width="60" height="30" fill="#1A1A1A"/><polygon points="32,14 35.5,24.5 46.5,24.5 37.5,31 41,41.5 32,35 23,41.5 26.5,31 17.5,24.5 28.5,24.5" fill="#F7D117"/></g>
+        </svg>
+        <span class="brand-name">Línguas de <span>Angola</span></span>
+      </a>
+      <button class="nav-toggle" aria-expanded="false" aria-controls="nav-main" aria-label="Abrir menu de navegação">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <nav id="nav-main" class="nav-main" aria-label="Navegação principal">
+        <a class="nav-link" href="index.html">Início</a>
+        <a class="nav-link" href="traducao.html">Traduzir</a>
+        <a class="nav-link" href="dicionario.html">Dicionário</a>
+        <a class="nav-link" href="frases.html">Frases úteis</a>
+        <a class="nav-link" href="painel.html">Painel</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="btn btn-ghost btn-icon contrast-toggle" type="button" aria-pressed="false" title="Ativar alto contraste" aria-label="Alternar alto contraste">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" stroke="none"/></svg>
+        </button>
+        <button class="btn btn-ghost btn-icon theme-toggle" type="button" aria-pressed="false" title="Mudar para tema escuro" aria-label="Alternar tema claro e escuro">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <a class="btn btn-secondary btn-sm auth-login-link" href="login.html">Entrar</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="conteudo">
+    <section class="page-hero" aria-labelledby="page-title">
+      <div class="container">
+        <p class="section-label">Ferramenta de tradução</p>
+        <h1 id="page-title">Traduzir línguas nacionais</h1>
+        <p>Insira palavras, frases ou textos numa língua nacional angolana e receba a tradução em Português ou Inglês. Este protótipo utiliza dados demonstrativos e indica quando uma tradução ainda não foi validada.</p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="tradutor-title">
+      <div class="container">
+        <div class="rule-banner" role="note" aria-label="Regra de tradução">
+          <span class="rule-banner-icon" aria-hidden="true">ℹ️</span>
+          <div>
+            <p><strong>Sentido permitido nesta versão:</strong> Língua nacional angolana → Português ou Inglês.</p>
+            <p>Não é possível traduzir de Português/Inglês para línguas nacionais, nem entre línguas nacionais, nesta primeira versão.</p>
+          </div>
+        </div>
+
+        <h2 id="tradutor-title" class="sr-only">Tradutor</h2>
+        <div class="translator-grid">
+          <!-- Input -->
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title">Texto de origem</h3>
+              <span class="badge">Língua nacional</span>
+            </div>
+            <form id="translation-form" novalidate>
+              <div class="form-row" style="margin-bottom:1rem;">
+                <div class="field">
+                  <label for="source-lang">Língua nacional de origem</label>
+                  <select id="source-lang" class="input" name="source-lang">
+                    <option value="umbundu">Umbundu / Umbungo</option>
+                    <option value="kimbundu">Kimbundu</option>
+                    <option value="cokwe">Côkwe / Cowke</option>
+                    <option value="kikongo">Kikongo / Kinkongo</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="target-lang">Idioma de destino</label>
+                  <select id="target-lang" class="input" name="target-lang">
+                    <option value="pt">Português</option>
+                    <option value="en">Inglês</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="field">
+                <label for="source-text">Palavra, frase ou texto</label>
+                <textarea id="source-text" class="input" name="source-text" rows="7" maxlength="500" placeholder="Escreva aqui o texto na língua nacional selecionada..." aria-describedby="char-count source-help"></textarea>
+                <div class="field-meta">
+                  <span id="source-help" class="field-hint">Máximo de 500 caracteres.</span>
+                  <span id="char-count" class="char-count" aria-live="polite">0 / 500 caracteres</span>
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Traduzir</button>
+                <button type="button" id="clear-form" class="btn btn-secondary">Limpar</button>
+                <button type="button" id="voice-input-btn" class="btn btn-secondary" aria-describedby="voice-status">
+                  <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                  Gravar voz
+                </button>
+              </div>
+              <div id="voice-status" class="notice notice-info" style="margin-top:1rem;" aria-live="polite">
+                A tradução por voz é demonstrativa. O reconhecimento de voz pode não estar disponível para todas as línguas nacionais; nesse caso, escreva o texto manualmente.
+              </div>
+            </form>
+          </div>
+
+          <!-- Output -->
+          <div class="panel" aria-labelledby="resultado-title">
+            <div class="panel-header">
+              <h3 id="resultado-title" class="panel-title">Resultado</h3>
+              <span class="badge badge-muted">Protótipo</span>
+            </div>
+            <div id="translation-result" class="result-area" aria-live="polite" aria-atomic="true">
+              <p class="result-placeholder">A tradução aparecerá aqui.</p>
+            </div>
+            <div id="translation-meta" class="result-meta" aria-live="polite"></div>
+            <div id="translation-validation"></div>
+            <div class="result-actions">
+              <button type="button" id="copy-result" class="btn btn-ghost btn-sm">Copiar</button>
+              <button type="button" id="listen-result" class="btn btn-ghost btn-sm">Ouvir tradução</button>
+              <button type="button" id="download-result" class="btn btn-ghost btn-sm">Descarregar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Avaliação / Sugestão -->
+    <section class="section section-alt" aria-labelledby="feedback-title">
+      <div class="container">
+        <div class="grid-2">
+          <div>
+            <p class="section-label">Melhoria contínua</p>
+            <h2 id="feedback-title" class="section-title">Avaliar ou sugerir correção</h2>
+            <p class="section-subtitle">As contribuições dos utilizadores ajudam a identificar variantes regionais, erros e melhorias. Todas as sugestões devem ser revistas por linguistas antes da validação.</p>
+            <div class="notice notice-warning" style="margin-top:1rem;">
+              <strong>Aviso:</strong> Tradução ainda não validada. Ajude-nos a melhorar este conteúdo.
+            </div>
+          </div>
+          <div class="panel card-static">
+            <form id="feedback-form" class="form-stack" novalidate>
+              <div class="field">
+                <span class="field-label">Avaliação da tradução</span>
+                <div class="rating-group" role="radiogroup" aria-label="Avaliação da tradução">
+                  <label><input type="radio" name="rating" value="5"><span>Excelente</span></label>
+                  <label><input type="radio" name="rating" value="4"><span>Boa</span></label>
+                  <label><input type="radio" name="rating" value="3"><span>Razoável</span></label>
+                  <label><input type="radio" name="rating" value="2"><span>Fraca</span></label>
+                  <label><input type="radio" name="rating" value="1"><span>Incorreta</span></label>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label for="feedback-name">Nome (opcional)</label>
+                  <input id="feedback-name" class="input" type="text" autocomplete="name" placeholder="O seu nome">
+                </div>
+                <div class="field">
+                  <label for="feedback-email">Email (opcional)</label>
+                  <input id="feedback-email" class="input" type="email" autocomplete="email" placeholder="nome@exemplo.com">
+                </div>
+              </div>
+              <div class="field">
+                <label for="feedback-suggestion">Sugestão de correção</label>
+                <textarea id="feedback-suggestion" class="input" rows="4" placeholder="Descreva a correção, variante regional ou contexto..."></textarea>
+              </div>
+              <div>
+                <button type="submit" class="btn btn-primary">Enviar contribuição</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Histórico -->
+    <section class="section" aria-labelledby="historico-title">
+      <div class="container">
+        <div style="display:flex;justify-content:space-between;gap:1rem;align-items:end;flex-wrap:wrap;margin-bottom:1.5rem;">
+          <div>
+            <p class="section-label">Histórico</p>
+            <h2 id="historico-title" class="section-title" style="margin-bottom:0;">Traduções recentes</h2>
+          </div>
+          <button type="button" id="clear-history" class="btn btn-secondary btn-sm">Limpar histórico</button>
+        </div>
+        <div id="history-list" class="history-list" aria-live="polite"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><g clip-path="url(#mark-clip)"><rect x="2" y="2" width="60" height="30" fill="#CE1126"/><rect x="2" y="32" width="60" height="30" fill="#1A1A1A"/><polygon points="32,14 35.5,24.5 46.5,24.5 37.5,31 41,41.5 32,35 23,41.5 26.5,31 17.5,24.5 28.5,24.5" fill="#F7D117"/></g></svg><span class="brand-name">Línguas de <span>Angola</span></span></a>
+          <p>Aproximando pessoas através das línguas de Angola. Protótipo dedicado à inclusão linguística e cultural.</p>
+        </div>
+        <div class="footer-col"><h3>Plataforma</h3><ul><li><a href="traducao.html">Traduzir</a></li><li><a href="dicionario.html">Dicionário</a></li><li><a href="frases.html">Frases úteis</a></li><li><a href="painel.html">Painel administrativo</a></li></ul></div>
+        <div class="footer-col"><h3>Contactos</h3><ul><li><a href="mailto:contacto@linguasdeangola.ao">contacto@linguasdeangola.ao</a></li><li><a href="tel:+244900000000">+244 900 000 000</a></li><li>Luanda, Angola</li></ul></div>
+        <div class="footer-col"><h3>Legal</h3><ul><li><a href="termos.html">Termos de uso</a></li><li><a href="privacidade.html">Política de privacidade</a></li></ul></div>
+      </div>
+      <div class="footer-bottom"><p>© 2026 Línguas de Angola. Protótipo demonstrativo. Traduções requerem validação linguística.</p><div class="footer-bottom-links"><a href="termos.html">Termos</a><a href="privacidade.html">Privacidade</a></div></div>
+    </div>
+  </footer>
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
